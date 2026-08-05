@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+src/pymergetic/wasmmod/_version.py
+.ruff_cache/
+.pytest_cache/

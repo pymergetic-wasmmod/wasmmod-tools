@@ -1,0 +1,45 @@
+# Publish pymergetic-wasmmod-tools (matches PyPI pending Trusted Publisher).
+name: publish-pypi-tools
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build only (skip PyPI upload)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # No `environment:` — pending publisher registered with empty / any env.
+    permissions:
+      id-token: write # OIDC Trusted Publishing (graduates pending → normal)
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          python -m pip install -U pip build twine
+          python -m build --wheel --sdist --outdir dist/
+          twine check dist/*
+
+      - name: Publish to PyPI
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # No password — OIDC only. Token upload would leave the pending publisher stuck.
