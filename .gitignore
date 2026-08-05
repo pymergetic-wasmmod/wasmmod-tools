@@ -4,6 +4,6 @@ __pycache__/
 dist/
 build/
 *.egg-info/
-src/pymergetic/wasmmod/_version.py
+src/pymergetic/wasmmod/tools/_version.py
 .ruff_cache/
 .pytest_cache/
