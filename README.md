@@ -5,6 +5,15 @@ ELF helpers, inspect, publish, CDN CLI.
 
 PyPI: **`pymergetic-wasmmod-tools`** · import: **`pymergetic.wasmmod.tools`**
 
+| Component | Role | Repo |
+|-----------|------|------|
+| wasmmod | Runtime + pack tree (`pymergetic-wasmmod`) | [pymergetic/wasmmod](https://github.com/pymergetic/wasmmod) · `main` |
+| **wasmmod-tools** | **This repo** — host CLI | [pymergetic/wasmmod-tools](https://github.com/pymergetic/wasmmod-tools) · `main` |
+| wasmmod-test | External pack/CDN consumer sample | [pymergetic/wasmmod-test](https://github.com/pymergetic/wasmmod-test) · `main` |
+| metal-cdn | CDN server + client | [pymergetic/metal-cdn](https://github.com/pymergetic/metal-cdn) · `main` |
+| metalpython `wasmmod` | Clean upy host + submodule (upstream-shaped) | [metalpython/tree/wasmmod](https://github.com/pymergetic/metalpython/tree/wasmmod) |
+| metalpython `master` | Metal product µPy; **base = `wasmmod` tip** | [metalpython/tree/master](https://github.com/pymergetic/metalpython/tree/master) |
+
 ```sh
 # current releases are alphas — always use --pre
 pip install --pre 'pymergetic-wasmmod-tools[cdn,inspect]'
