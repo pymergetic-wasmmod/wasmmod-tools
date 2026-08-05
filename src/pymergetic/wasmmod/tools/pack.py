@@ -326,19 +326,42 @@ def parse_python_target(spec: str) -> PythonTarget:
 
 
 def find_mpy_cross() -> str | None:
+    """Locate ``mpy-cross`` for upy pack targets.
+
+    Order: ``MPY_CROSS`` env, ``PATH``, then walk from ``wasmmod_root()`` / cwd
+    (MicroPython / metalpython checkouts). Standalone pip users only need the
+    binary on ``PATH``.
+    """
     env = os.environ.get("MPY_CROSS")
     if env and Path(env).is_file():
         return env
-    here = Path(__file__).resolve()
-    # tools/ → wasmmod → extmod → repo root (typical submodule layout)
-    for parent in here.parents:
+    which = shutil.which("mpy-cross")
+    if which:
+        return which
+
+    roots: list[Path] = []
+    wr = wasmmod_root()
+    if wr is not None:
+        roots.append(wr)
+        # submodule: …/extmod/wasmmod → µPy / metalpython root
+        if len(wr.parents) >= 2 and wr.name == "wasmmod" and wr.parent.name == "extmod":
+            roots.append(wr.parents[1])
+    roots.append(Path.cwd().resolve())
+    roots.extend(Path.cwd().resolve().parents)
+
+    seen: set[Path] = set()
+    for parent in roots:
+        parent = parent.resolve()
+        if parent in seen:
+            continue
+        seen.add(parent)
         for cand in (
             parent / "mpy-cross" / "build" / "mpy-cross",
             parent / "mpy-cross" / "mpy-cross",
         ):
             if cand.is_file() and os.access(cand, os.X_OK):
                 return str(cand)
-    return shutil.which("mpy-cross")
+    return None
 
 
 def find_cpython(cp: int) -> str | None:

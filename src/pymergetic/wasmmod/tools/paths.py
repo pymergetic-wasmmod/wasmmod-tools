@@ -9,8 +9,8 @@ from pathlib import Path
 def wasmmod_root() -> Path | None:
     """Return the wasmmod repo root, or None if not found.
 
-    Order: ``WASMMOD_ROOT`` env, then walk cwd parents, then common
-    os-sdk sibling layout next to this installed package.
+    Order: ``WASMMOD_ROOT`` env, installed ``pymergetic-wasmmod`` share tree,
+    cwd parents, then common os-sdk sibling layout.
     """
     env = os.environ.get("WASMMOD_ROOT")
     if env:
@@ -21,6 +21,15 @@ def wasmmod_root() -> Path | None:
 
     def _looks_like(root: Path) -> bool:
         return (root / "loader.c").is_file() or (root / "crates" / "wasmmod-read").is_dir()
+
+    try:
+        from pymergetic.wasmmod.rt import root as _rt_root
+
+        bundled = _rt_root()
+        if bundled is not None and _looks_like(bundled):
+            return bundled
+    except ImportError:
+        pass
 
     here = Path.cwd().resolve()
     for cand in (here, *here.parents):
@@ -44,6 +53,7 @@ def require_wasmmod_root() -> Path:
     if root is None:
         raise SystemExit(
             "wasmmod tools: cannot find wasmmod checkout.\n"
-            "  Set WASMMOD_ROOT=/path/to/wasmmod (repo with loader.c / crates/)."
+            "  pip install --pre pymergetic-wasmmod   # ships source under the wheel\n"
+            "  # or: set WASMMOD_ROOT=/path/to/wasmmod (repo with loader.c / crates/)"
         )
     return root
