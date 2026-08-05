@@ -189,3 +189,94 @@ def test_missing_key_fails_before_pack(tmp_path: Path) -> None:
         assert "wasmmod publish:" in msg
         assert "missing signing key" in msg
         assert "gen-pki" in msg
+
+
+def test_discover_elfs_prefers_arch(tmp_path: Path) -> None:
+    pub = _load("wasmmod_publish")
+    (tmp_path / "hello.elf").write_bytes(b"\x7fELF" + b"\x00" * 8)
+    tagged = tmp_path / "hello.x86_64.elf"
+    tagged.write_bytes(b"\x7fELF" + b"\x00" * 8)
+    found = pub._discover_elfs(tmp_path, "hello", arch="x86_64")
+    names = [p.name for p in found]
+    assert "hello.x86_64.elf" in names
+    assert "hello.elf" in names
+
+
+def test_auto_elf_from_out_dir(tmp_path: Path) -> None:
+    pub = _load("wasmmod_publish")
+    out = tmp_path / "out"
+    out.mkdir()
+    wasm = tmp_path / "hello.wasm"
+    elf = out / "hello.elf"
+    wasm.write_bytes(b"\x00asm\x01\x00\x00\x00")
+    elf.write_bytes(b"\x7fELF" + b"\x00" * 32)
+    rc = pub.main(
+        [
+            "--from-artifacts",
+            str(wasm),
+            "--package",
+            "hello",
+            "--version",
+            "0.1.0",
+            "--no-sign",
+            "--dry-run",
+            "-o",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert (out / "hello.elf.zlib").is_file()
+
+
+def test_no_elf_skips_auto(tmp_path: Path) -> None:
+    pub = _load("wasmmod_publish")
+    out = tmp_path / "out"
+    out.mkdir()
+    wasm = tmp_path / "hello.wasm"
+    elf = out / "hello.elf"
+    wasm.write_bytes(b"\x00asm\x01\x00\x00\x00")
+    elf.write_bytes(b"\x7fELF" + b"\x00" * 32)
+    rc = pub.main(
+        [
+            "--from-artifacts",
+            str(wasm),
+            "--package",
+            "hello",
+            "--version",
+            "0.1.0",
+            "--no-sign",
+            "--no-elf",
+            "--dry-run",
+            "-o",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    assert not (out / "hello.elf.zlib").is_file()
+
+
+def test_elf_and_no_elf_conflict(tmp_path: Path) -> None:
+    pub = _load("wasmmod_publish")
+    wasm = tmp_path / "hello.wasm"
+    elf = tmp_path / "hello.elf"
+    wasm.write_bytes(b"\x00asm\x01\x00\x00\x00")
+    elf.write_bytes(b"\x7fELF" + b"\x00" * 8)
+    try:
+        pub.main(
+            [
+                "--from-artifacts",
+                str(wasm),
+                "--elf",
+                str(elf),
+                "--no-elf",
+                "--package",
+                "hello",
+                "--version",
+                "0.1.0",
+                "--no-sign",
+                "--dry-run",
+            ]
+        )
+        raise AssertionError("expected SystemExit")
+    except SystemExit as e:
+        assert e.code not in (0, None)

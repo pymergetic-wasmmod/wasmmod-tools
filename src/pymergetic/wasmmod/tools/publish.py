@@ -23,25 +23,33 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 """
-One-shot CDN release: pack → (AOT) → sign → zlib → metal-cdn upload.
+One-shot CDN release: pack → AOT → sign → zlib → metal-cdn upload.
+
+By default builds **wasm + AOT** and attaches any matching ELF twins under
+``-o`` / ``--elf``. Use ``--no-aot`` / ``--no-elf`` for a faster local loop;
+uploads should keep the full set.
 
   tools/wasmmod.py publish examples/hello --version 0.1.0 \\
       --key .keys/sign/leaf.key.pem --chain .keys/sign/chain.der
 
-  # Also upload a prebuilt ELF twin:
+  # Explicit ELF twin (otherwise auto-picks packs/<pkg>.elf / .<arch>.elf):
   tools/wasmmod.py publish examples/hello --version 0.1.0 --elf packs/hello.elf \\
       --arch x86_64 --key … --chain …
+
+  # Dev: skip AOT (and optional ELF) for a closer pack loop:
+  tools/wasmmod.py publish examples/hello --version 0.1.0 --no-aot --no-elf \\
+      --dry-run --key … --chain …
 
   # Stage artifacts only (no HTTP):
   tools/wasmmod.py publish examples/hello --version 0.1.0 --dry-run \\
       --key … --chain …
 
-  # Upload already-built naked artifacts (skip pack/AOT/sign):
+  # Upload already-built naked artifacts (skip pack/AOT):
   tools/wasmmod.py publish --from-artifacts packs/hello.wasm packs/hello.elf \\
       --package hello --version 0.1.0 --token "$METAL_CDN_TOKEN" \\
       --cdn-url https://cdn.example/cdn
 
-Requires: openssl (sign), optional wamrc (--aot), and
+Requires: openssl (sign), wamrc (unless ``--no-aot``), and
 ``pip install pymergetic-metal-cdn-client`` for upload (not needed for --dry-run).
 """
 
@@ -397,6 +405,34 @@ def _require_file(path: Path, *, what: str, hint: str) -> None:
     _cli().die(PROG, f"missing {what}: {path}", hint)
 
 
+def _discover_elfs(
+    out_dir: Path,
+    package: str,
+    *,
+    arch: str | None,
+) -> list[Path]:
+    """Find prebuilt ELF twins for *package* under *out_dir* (no build)."""
+    names: list[str] = []
+    if arch:
+        names.append(f"{package}.{arch}.elf")
+    machine = os.uname().machine
+    if not arch or arch != machine:
+        names.append(f"{package}.{machine}.elf")
+    names.append(f"{package}.elf")
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for name in names:
+        path = out_dir / name
+        if not path.is_file():
+            continue
+        key = path.resolve()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(path)
+    return found
+
+
 def _validate_publish_inputs(args: argparse.Namespace) -> None:
     """Fail fast before pack/AOT (expensive)."""
     cli = _cli()
@@ -483,12 +519,26 @@ def main(argv: list[str] | None = None) -> int:
         nargs="+",
         type=Path,
         default=[],
-        help="Extra .elf packs to sign/zlib/upload beside the Wasm build (or alone with --from-artifacts)",
+        help=(
+            "Extra .elf packs to sign/zlib/upload beside the Wasm/AOT build. "
+            "When omitted, auto-attach out-dir/<package>.elf and .<arch>.elf if present; "
+            "use --no-elf to skip"
+        ),
+    )
+    ap.add_argument(
+        "--no-elf",
+        action="store_true",
+        help="Do not attach ELF twins (skip auto-discover and --elf)",
     )
     ap.add_argument("--package", help="CDN package name (default: pack.toml name / artifact stem)")
     ap.add_argument("--version", help="Package version (default: pack.toml version)")
     ap.add_argument("-o", "--out-dir", type=Path, default=Path("packs"), help="Build output dir")
-    ap.add_argument("--aot", action="store_true", help="Also compile AOT via wamrc")
+    ap.add_argument(
+        "--aot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Compile AOT via wamrc (default: on). Use --no-aot for a faster pack-only loop",
+    )
     ap.add_argument("--wamrc", default=os.environ.get("WAMRC", "wamrc"))
     ap.add_argument("--arch", help="Arch infix for AOT/ELF CDN names (e.g. x86_64)")
     ap.add_argument("--key", type=Path, help="ECDSA leaf key PEM")
@@ -527,6 +577,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.from_artifacts and args.pack is None:
         ap.error("pack path required (or pass --from-artifacts)")
+    if args.no_elf and args.elf:
+        ap.error("pass --elf or --no-elf, not both")
 
     _validate_publish_inputs(args)
 
@@ -574,7 +626,38 @@ def main(argv: list[str] | None = None) -> int:
         if aot_path is not None:
             naked.append(aot_path)
 
-    for elf_path in args.elf or []:
+    assert package and version
+
+    elf_paths: list[Path] = []
+    if not args.no_elf:
+        if args.elf:
+            elf_paths = list(args.elf)
+        else:
+            already_elf = {
+                p.resolve()
+                for p in naked
+                if p.suffix == ".elf" or ".elf." in p.name
+            }
+            # Auto-attach prebuilt twins (demos: make packs / packs-wasm).
+            elf_paths = [
+                p
+                for p in _discover_elfs(args.out_dir, package, arch=args.arch)
+                if p.resolve() not in already_elf
+            ]
+            if elf_paths:
+                print(
+                    "auto-elf: " + ", ".join(str(p) for p in elf_paths),
+                    file=sys.stderr,
+                )
+            elif not already_elf and not args.from_artifacts:
+                print(
+                    f"{PROG}: note: no ELF twin under {args.out_dir}/ "
+                    f"({package}.elf); build with make -C examples/{package}_elf "
+                    "or pass --elf PATH (use --no-elf to silence)",
+                    file=sys.stderr,
+                )
+
+    for elf_path in elf_paths:
         ep = elf_path.resolve()
         _require_file(ep, what="ELF artifact (--elf)", hint="Build with: make -C examples/hello_elf")
         naked.append(_stage_copy(ep, args.out_dir))
@@ -589,7 +672,6 @@ def main(argv: list[str] | None = None) -> int:
                 staged_naked.append(p)
         naked = staged_naked
 
-    assert package and version
     description = args.description or manifest_meta.get("description") or manifest_meta.get("comment")
     homepage = args.homepage or manifest_meta.get("homepage")
     license_s = args.license or manifest_meta.get("license")
