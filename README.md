@@ -1,19 +1,20 @@
 # wasmmod-tools
 
-Host-side tooling for [wasmmod](https://github.com/pymergetic/wasmmod): ELF helpers
-and pack inspect (shared with [metal-cdn](https://github.com/pymergetic/metal-cdn)).
+Host-side tooling for [wasmmod](https://github.com/pymergetic/wasmmod): pack, sign,
+ELF helpers, inspect, publish, CDN CLI.
 
 PyPI: **`pymergetic-wasmmod-tools`** · import: **`pymergetic.wasmmod.tools`**
 
 ```sh
-pip install pymergetic-wasmmod-tools
-python -c "from pymergetic.wasmmod.tools import elf, inspect"
-wasmmod-inspect --help
+pip install 'pymergetic-wasmmod-tools[cdn,inspect]'
+export WASMMOD_ROOT=/path/to/wasmmod   # for pack / read / examples
+wasmmod pack examples/hello -o hello.wasm
+wasmmod inspect hello.wasm
 ```
 
-PEP 420 layout: `pymergetic` / `wasmmod` are namespace packages; `tools` is the leaf.
+PEP 420: `pymergetic` / `wasmmod` are namespaces; `tools` is the leaf package.
 
-## Release (Trusted Publishing)
+## Trusted Publishing
 
 | Field | Value |
 |-------|--------|
@@ -22,8 +23,3 @@ PEP 420 layout: `pymergetic` / `wasmmod` are namespace packages; `tools` is the 
 | Repository | `wasmmod-tools` |
 | Workflow name | `publish-pypi-tools.yml` |
 | Environment | *(empty / any)* |
-
-```sh
-git tag -a v0.1.0a1 -m "v0.1.0a1"
-git push origin main && git push origin v0.1.0a1
-```

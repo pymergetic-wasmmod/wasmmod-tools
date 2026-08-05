@@ -1,7 +1,7 @@
 [project]
 name = "pymergetic-wasmmod-tools"
 dynamic = ["version"]
-description = "Host-side wasmmod tooling: ELF helpers and pack inspect"
+description = "Host-side wasmmod tooling: pack, sign, inspect, ELF, CDN"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -9,9 +9,19 @@ authors = [{ name = "Rouven Raudzus", email = "raudzus@pymergetic.com" }]
 dependencies = []
 
 [project.optional-dependencies]
+cdn = [
+    "pymergetic-metal-cdn-client>=0.1.0a3",
+]
+inspect = [
+    "pyelftools>=0.31",
+    "capstone>=5.0",
+]
 dev = [
     "pytest>=8.3.0",
     "ruff>=0.8.0",
+    "pymergetic-metal-cdn-client>=0.1.0a3",
+    "pyelftools>=0.31",
+    "capstone>=5.0",
 ]
 
 [project.urls]
@@ -19,6 +29,7 @@ Homepage = "https://github.com/pymergetic/wasmmod-tools"
 Documentation = "https://github.com/pymergetic/wasmmod-tools#readme"
 
 [project.scripts]
+wasmmod = "pymergetic.wasmmod.tools.__main__:main"
 wasmmod-inspect = "pymergetic.wasmmod.tools.inspect:main"
 
 [build-system]
@@ -39,10 +50,13 @@ search_parent_directories = false
 version_file = "src/pymergetic/wasmmod/tools/_version.py"
 fallback_version = "0.1.0a1"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
-ignore = ["BLE001"]
+ignore = ["BLE001", "E402", "EXE001", "EXE002", "PLC0414", "SIM103"]

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """ELF64 LE helpers for wasmmod metadata sections (.wasmmod.*).
 
 Append is incremental (preserves ET_REL code/symtab). A trailing WPSE cookie

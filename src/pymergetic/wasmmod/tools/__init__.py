@@ -1,4 +1,4 @@
-"""Host-side wasmmod tooling (ELF helpers + pack inspect)."""
+"""Host-side wasmmod tooling (ELF helpers, pack, sign, inspect, CDN)."""
 
 from . import elf, inspect
 

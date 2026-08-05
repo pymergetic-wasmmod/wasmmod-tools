@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Host-side pack inspect: symbols, addr2line/locations, disasm, mpy-dis.
 
 Also: ``tools/wasmmod.py inspect PATH`` — pack/source/sig summary (rich via CDN
@@ -7,7 +6,6 @@ client, else ``_offline_inspect``). Shared with CDN client; no MicroPython.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import re
 import struct
@@ -24,7 +22,7 @@ TOOLS = Path(__file__).resolve().parent
 TOOLS_DIR = TOOLS
 PROG = "wasmmod inspect"
 
-from . import elf
+from . import elf as elf
 
 SHT_SYMTAB = 2
 SHT_STRTAB = 3
@@ -792,14 +790,15 @@ def mpy_disasm(mpy: bytes, limit: int = 80) -> list[DisasmLine]:
 
 
 def _load(stem: str):
-    path = TOOLS_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(stem, path)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"{PROG}: cannot load {path}")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[stem] = mod
-    spec.loader.exec_module(mod)
-    return mod
+    """Load a tools submodule by legacy wasmmod_* stem or short name."""
+    import importlib
+    name = stem
+    if name.startswith("wasmmod_"):
+        name = name[len("wasmmod_") :]
+    elif name == "wasmmod":
+        name = "__main__"
+    return importlib.import_module(f"pymergetic.wasmmod.tools.{name}")
+
 
 
 def _cli():
@@ -853,17 +852,26 @@ def _offline_inspect(path: Path) -> dict[str, Any]:
     except Exception as exc:
         out["symbols_error"] = str(exc)
 
-    sign_py = TOOLS_DIR / "wasmmod_sign.py"
+    import contextlib
+    import io
+
+    from . import sign
+
     try:
-        proc = subprocess.run(
-            [sys.executable, str(sign_py), "info", str(path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        out["sign_info"] = (proc.stdout or proc.stderr or "").strip()
-        if proc.returncode != 0 and not out["sign_info"]:
-            out["sign_error"] = f"exit {proc.returncode}"
+        buf = io.StringIO()
+        old_argv = sys.argv
+        try:
+            sys.argv = ["wasmmod sign", "info", str(path)]
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                try:
+                    rc = sign.main()
+                except SystemExit as exc:
+                    rc = int(exc.code) if isinstance(exc.code, int) else 1
+        finally:
+            sys.argv = old_argv
+        out["sign_info"] = buf.getvalue().strip()
+        if rc and not out["sign_info"]:
+            out["sign_error"] = f"exit {rc}"
     except OSError as exc:
         out["sign_error"] = str(exc)
     return out
@@ -1044,13 +1052,18 @@ def _main_artifact(argv: list[str]) -> int:
             if rich is None:
                 return 0 if result.ok else 1
         except ImportError:
-            sign_py = TOOLS_DIR / "wasmmod_sign.py"
-            cmd = [sys.executable, str(sign_py), "verify", str(path)]
-            for root in args.trust:
-                cmd.extend(["--trust", str(root)])
-            proc = subprocess.run(cmd, check=False)
-            if proc.returncode != 0:
-                return proc.returncode
+            from . import sign
+
+            old_argv = sys.argv
+            try:
+                sys.argv = ["wasmmod sign", "verify", str(path)]
+                for root in args.trust:
+                    sys.argv.extend(["--trust", str(root)])
+                rc = sign.main()
+            finally:
+                sys.argv = old_argv
+            if rc:
+                return rc
 
     if rich is not None:
         if args.json:
