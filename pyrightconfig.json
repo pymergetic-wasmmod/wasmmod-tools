@@ -1,0 +1,20 @@
+{
+  "include": ["src", "tests"],
+  "exclude": ["**/.venv", "**/__pycache__", "build", "dist"],
+  "extraPaths": [
+    "src",
+    "../metalpython/extmod/wasmmod/python"
+  ],
+  "stubPath": "typings",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "error",
+  "reportMissingModuleSource": "none",
+  "executionEnvironments": [
+    {
+      "root": ".",
+      "extraPaths": ["src", "../metalpython/extmod/wasmmod/python"],
+      "pythonVersion": "3.12"
+    }
+  ]
+}

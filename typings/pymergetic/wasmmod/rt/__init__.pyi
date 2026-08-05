@@ -1,0 +1,6 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+def root() -> Path | None: ...
+def require_root() -> Path: ...

@@ -60,3 +60,22 @@ extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 ignore = ["BLE001", "E402", "EXE001", "EXE002", "PLC0414", "SIM103"]
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = ["**/.venv", "**/__pycache__", "build", "dist"]
+extraPaths = ["src", "../metalpython/extmod/wasmmod/python"]
+stubPath = "typings"
+pythonVersion = "3.12"
+reportMissingImports = "error"
+reportMissingModuleSource = "none"
+
+[tool.basedpyright]
+include = ["src", "tests"]
+exclude = ["**/.venv", "**/__pycache__", "build", "dist"]
+extraPaths = ["src", "../metalpython/extmod/wasmmod/python"]
+stubPath = "typings"
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = "error"
+reportMissingModuleSource = "none"
