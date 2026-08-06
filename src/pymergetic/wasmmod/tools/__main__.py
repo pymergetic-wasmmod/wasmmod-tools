@@ -14,6 +14,7 @@ COMMANDS: dict[str, str] = {
     "pack-tree": "pack_tree",
     "sign": "sign",
     "embed-ca": "embed_ca",
+    "embed-host": "embed_host",
     "httpd": "httpd",
     "source": "source",
     "read": "read",

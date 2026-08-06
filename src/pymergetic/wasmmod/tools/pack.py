@@ -698,8 +698,47 @@ def parse_manifest_deps(data: dict) -> list[tuple[str, str]]:
     raise SystemExit("wasm_pack: deps must be a table or list of tables")
 
 
+def guest_include_dir() -> Path | None:
+    """Directory containing ``pm_guest.h`` (public guest compile surface).
+
+    The wheel ``share/`` tree may omit ``include/``; packing from a checkout
+    (``examples/client``, metalpython submodule) must still find headers.
+    """
+    candidates: list[Path] = []
+    root = wasmmod_root()
+    if root is not None:
+        candidates.append(root / "include")
+    here = Path.cwd().resolve()
+    for cand in (here, *here.parents):
+        candidates.append(cand / "include")
+    # tools package → sibling wasmmod / metalpython submodule
+    pkg = Path(__file__).resolve()
+    for parent in pkg.parents:
+        candidates.append(parent / "wasmmod" / "include")
+        candidates.append(parent / "metalpython" / "extmod" / "wasmmod" / "include")
+    seen: set[Path] = set()
+    for inc in candidates:
+        try:
+            inc = inc.resolve()
+        except OSError:
+            continue
+        if inc in seen:
+            continue
+        seen.add(inc)
+        if (inc / "pm_guest.h").is_file():
+            return inc
+    return None
+
+
+def guest_include_flags() -> list[str]:
+    """`-I…/include` for public `pm_*` / `pm_guest.h` (Wasm + ELF guests)."""
+    inc = guest_include_dir()
+    return [f"-I{inc}"] if inc is not None else []
+
+
 def compile_to_obj(src: Path, obj: Path, opt: str) -> None:
     ext = src.suffix
+    guest_inc = guest_include_flags()
     if ext in C_EXTS:
         clang = find_clang()
         cmd = [
@@ -708,6 +747,7 @@ def compile_to_obj(src: Path, obj: Path, opt: str) -> None:
             "--target=wasm32",
             "-nostdlib",
             "-ffreestanding",
+            *guest_inc,
             "-c",
             "-o",
             str(obj),
@@ -723,6 +763,7 @@ def compile_to_obj(src: Path, obj: Path, opt: str) -> None:
             "-ffreestanding",
             "-fno-exceptions",
             "-fno-rtti",
+            *guest_inc,
             "-c",
             "-o",
             str(obj),
@@ -752,6 +793,7 @@ def compile_wasm(sources: list[str], out: Path, exports: list[str], opt: str) ->
     clang = find_clang()
     wasm_ld = find_wasm_ld()
     src_paths = [Path(s) for s in sources]
+    guest_inc = guest_include_flags()
     # Fast path: single C file can still go through the clang driver.
     if len(src_paths) == 1 and src_paths[0].suffix in C_EXTS:
         cmd = [
@@ -760,6 +802,7 @@ def compile_wasm(sources: list[str], out: Path, exports: list[str], opt: str) ->
             "--target=wasm32",
             "-nostdlib",
             "-ffreestanding",
+            *guest_inc,
             "-Wl,--no-entry",
             "-Wl,--allow-undefined",
         ]

@@ -22,6 +22,13 @@ def wasmmod_root() -> Path | None:
     def _looks_like(root: Path) -> bool:
         return (root / "loader.c").is_file() or (root / "crates" / "wasmmod-read").is_dir()
 
+    here = Path.cwd().resolve()
+    # Prefer a live checkout (cwd parents) over the wheel share tree — share may
+    # lag (e.g. missing include/) while examples/ pack against the submodule.
+    for cand in (here, *here.parents):
+        if _looks_like(cand):
+            return cand
+
     try:
         from pymergetic.wasmmod.rt import root as _rt_root
 
@@ -30,11 +37,6 @@ def wasmmod_root() -> Path | None:
             return bundled
     except ImportError:
         pass
-
-    here = Path.cwd().resolve()
-    for cand in (here, *here.parents):
-        if _looks_like(cand):
-            return cand
 
     # packages/wasmmod-tools → packages/metalpython/extmod/wasmmod
     pkg = Path(__file__).resolve()
