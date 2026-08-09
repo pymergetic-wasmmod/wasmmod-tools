@@ -680,6 +680,11 @@ def parse_manifest_deps(data: dict) -> list[tuple[str, str]]:
         for name, ver in raw.items():
             if not isinstance(name, str) or not name:
                 raise SystemExit("wasm_pack: deps keys must be non-empty strings")
+            if isinstance(ver, dict):
+                raise SystemExit(
+                    f"wasm_pack: deps[{name!r}] looks nested — quote dotted package "
+                    f'names in pack.toml, e.g. "{name}.…" = "0.1.0"'
+                )
             if not isinstance(ver, str) or not ver:
                 raise SystemExit(f"wasm_pack: deps[{name!r}] must be a non-empty version string")
             out.append((name, ver))
