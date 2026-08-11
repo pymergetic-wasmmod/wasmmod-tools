@@ -10,7 +10,7 @@ dependencies = []
 
 [project.optional-dependencies]
 cdn = [
-    "pymergetic-wasmmod-cdn-client>=0.1.0a3",
+    "pymergetic-wasmmod-cdn-client>=0.2.0a1",
 ]
 inspect = [
     "pyelftools>=0.31",
@@ -19,7 +19,7 @@ inspect = [
 dev = [
     "pytest>=8.3.0",
     "ruff>=0.8.0",
-    "pymergetic-wasmmod-cdn-client>=0.1.0a3",
+    "pymergetic-wasmmod-cdn-client>=0.2.0a1",
     "pyelftools>=0.31",
     "capstone>=5.0",
 ]
@@ -48,7 +48,7 @@ namespaces = true
 root = "."
 search_parent_directories = false
 version_file = "src/pymergetic/wasmmod/tools/_version.py"
-fallback_version = "0.1.0a1"
+fallback_version = "0.2.0a1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
