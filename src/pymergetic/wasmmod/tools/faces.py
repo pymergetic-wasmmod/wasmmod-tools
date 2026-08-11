@@ -26,7 +26,7 @@
 face-export-discovery, v1: **C only**.
 
 Regex-scans ``__impl__.c`` files for ``PM_MOD_EXPORT_C(module, export_name,
-impl_fn, c_type_signature)`` call sites (see ``include/pm_guest.h`` for the
+impl_fn, c_type_signature)`` call sites (see ``src/pymergetic/wasmmod/guest.h`` for the
 macro itself — currently a declarative no-op, real slot-backed registration
 is the separate, later ``pm-mod-export-macro`` work).
 

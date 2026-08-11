@@ -32,7 +32,7 @@ def wasmmod_root() -> Path | None:
 
     here = Path.cwd().resolve()
     # Prefer a live checkout (cwd parents) over the wheel share tree — share may
-    # lag (e.g. missing include/) while examples/ pack against the submodule.
+    # lag while examples/ pack against the submodule.
     for cand in (here, *here.parents):
         if _looks_like(cand):
             return cand

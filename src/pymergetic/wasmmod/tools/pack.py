@@ -704,40 +704,45 @@ def parse_manifest_deps(data: dict) -> list[tuple[str, str]]:
     raise SystemExit("wasm_pack: deps must be a table or list of tables")
 
 
-def guest_include_dir() -> Path | None:
-    """Directory containing ``pm_guest.h`` (public guest compile surface).
+def _guest_header(root: Path) -> Path:
+    """Unified-tree guest umbrella: ``src/pymergetic/wasmmod/guest.h``."""
+    return root / "src" / "pymergetic" / "wasmmod" / "guest.h"
 
-    The wheel ``share/`` tree may omit ``include/``; packing from a checkout
-    (``examples/client``, metalpython submodule) must still find headers.
+
+def guest_include_dir() -> Path | None:
+    """Crate root for the ``-I`` rule (``#include "src/pymergetic/…"``).
+
+    No parallel ``include/`` — guest macros live under ``src/`` like
+    every other module face (see docs/SOURCETREE.md).
     """
     candidates: list[Path] = []
     root = wasmmod_root()
     if root is not None:
-        candidates.append(root / "include")
+        candidates.append(root)
     here = Path.cwd().resolve()
     for cand in (here, *here.parents):
-        candidates.append(cand / "include")
-    # tools package → sibling wasmmod / metalpython submodule
+        candidates.append(cand)
     pkg = Path(__file__).resolve()
     for parent in pkg.parents:
-        candidates.append(parent / "wasmmod" / "include")
-        candidates.append(parent / "metalpython" / "extmod" / "wasmmod" / "include")
+        candidates.append(parent / "wasmmod")
+        candidates.append(parent / "micropython-wasmmod" / "extmod" / "wasmmod")
+        candidates.append(parent / "metalpython" / "extmod" / "wasmmod")
     seen: set[Path] = set()
-    for inc in candidates:
+    for cand in candidates:
         try:
-            inc = inc.resolve()
+            cand = cand.resolve()
         except OSError:
             continue
-        if inc in seen:
+        if cand in seen:
             continue
-        seen.add(inc)
-        if (inc / "pm_guest.h").is_file():
-            return inc
+        seen.add(cand)
+        if _guest_header(cand).is_file():
+            return cand
     return None
 
 
 def guest_include_flags() -> list[str]:
-    """`-I…/include` for public `pm_*` / `pm_guest.h` (Wasm + ELF guests)."""
+    """``-I`` crate root so guests can ``#include "src/pymergetic/wasmmod/guest.h"``."""
     inc = guest_include_dir()
     return [f"-I{inc}"] if inc is not None else []
 
