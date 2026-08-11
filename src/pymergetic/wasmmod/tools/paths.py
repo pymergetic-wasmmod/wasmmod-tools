@@ -20,7 +20,15 @@ def wasmmod_root() -> Path | None:
         return None
 
     def _looks_like(root: Path) -> bool:
-        return (root / "loader.c").is_file() or (root / "crates" / "wasmmod-read").is_dir()
+        # Old reference tree (packages/metalpython/extmod/wasmmod).
+        if (root / "loader.c").is_file() or (root / "crates" / "wasmmod-read").is_dir():
+            return True
+        # New destination tree (packages/micropython-wasmmod/extmod/wasmmod,
+        # and the wheel-bundled rt/share/ copy of the same shape): a Cargo
+        # crate with the loader/registry under src/pymergetic/wasmmod/.
+        if (root / "Cargo.toml").is_file() and (root / "src" / "pymergetic" / "wasmmod").is_dir():
+            return True
+        return False
 
     here = Path.cwd().resolve()
     # Prefer a live checkout (cwd parents) over the wheel share tree — share may
@@ -38,15 +46,17 @@ def wasmmod_root() -> Path | None:
     except ImportError:
         pass
 
-    # packages/wasmmod-tools → packages/metalpython/extmod/wasmmod
+    # packages/wasmmod-tools → os-sdk packages/*/extmod/wasmmod checkouts
     pkg = Path(__file__).resolve()
     for parent in pkg.parents:
-        sibling = parent / "metalpython" / "extmod" / "wasmmod"
-        if _looks_like(sibling):
-            return sibling
-        sibling2 = parent / "extmod" / "wasmmod"
-        if _looks_like(sibling2):
-            return sibling2
+        for rel in (
+            ("micropython-wasmmod", "extmod", "wasmmod"),
+            ("metalpython", "extmod", "wasmmod"),
+            ("extmod", "wasmmod"),
+        ):
+            sibling = parent.joinpath(*rel)
+            if _looks_like(sibling):
+                return sibling
     return None
 
 

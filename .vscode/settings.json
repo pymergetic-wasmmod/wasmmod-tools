@@ -1,15 +1,13 @@
 {
   "python.analysis.extraPaths": [
-    "${workspaceFolder}/src",
-    "${workspaceFolder}/../metalpython/extmod/wasmmod/python"
+    "${workspaceFolder}/src"
   ],
   "python.analysis.stubPath": "${workspaceFolder}/typings",
   "python.analysis.diagnosticSeverityOverrides": {
     "reportMissingModuleSource": "none"
   },
   "cursorpyright.analysis.extraPaths": [
-    "${workspaceFolder}/src",
-    "${workspaceFolder}/../metalpython/extmod/wasmmod/python"
+    "${workspaceFolder}/src"
   ],
   "cursorpyright.analysis.stubPath": "${workspaceFolder}/typings",
   "cursorpyright.analysis.diagnosticSeverityOverrides": {

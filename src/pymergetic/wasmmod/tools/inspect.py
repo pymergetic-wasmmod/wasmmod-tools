@@ -1016,7 +1016,7 @@ def _main_artifact(argv: list[str]) -> int:
     data = path.read_bytes()
     rich = None
     try:
-        from pymergetic.metal.cdn_client.contents import inspect_artifact
+        from pymergetic.wasmmod.cdn_client.contents import inspect_artifact
 
         rich = inspect_artifact(data, filename=path.name)
     except ImportError:
@@ -1027,7 +1027,7 @@ def _main_artifact(argv: list[str]) -> int:
         if not roots:
             cli.die(PROG, "--verify requires at least one --trust root")
         try:
-            from pymergetic.metal.cdn_client.verify import verify_artifact
+            from pymergetic.wasmmod.cdn_client.verify import verify_artifact
 
             result = verify_artifact(data, trust_roots=roots, filename=path.name)
             if args.json:

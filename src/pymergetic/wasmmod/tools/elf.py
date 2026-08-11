@@ -1,13 +1,15 @@
-"""ELF64 LE helpers for wasmmod metadata sections (.wasmmod.*).
+"""ELF LE helpers for wasmmod metadata sections (.wasmmod.*).
 
-Append is incremental (preserves ET_REL code/symtab). A trailing WPSE cookie
-lets strip restore the exact pre-append bytes for stable sign digests.
+Supports ELF64 and ELF32 (BIOS trampoline is ELF32 i386). Append is
+incremental; a trailing WPSE cookie lets strip restore the exact pre-append
+bytes for stable sign digests.
 """
 from __future__ import annotations
 
 import struct
 
 EI_NIDENT = 16
+ELFCLASS32 = 1
 ELFCLASS64 = 2
 ELFDATA2LSB = 1
 SHT_NULL = 0
@@ -16,8 +18,13 @@ SHT_STRTAB = 3
 SHT_NOTE = 7
 SHT_NOBITS = 8
 
-Ehdr = struct.Struct("<16sHHIQQQIHHHHHH")
-Shdr = struct.Struct("<IIQQQQIIQQ")
+# ELF64
+Ehdr64 = struct.Struct("<16sHHIQQQIHHHHHH")
+Shdr64 = struct.Struct("<IIQQQQIIQQ")
+# ELF32
+Ehdr32 = struct.Struct("<16sHHIIIIIHHHHHH")
+Shdr32 = struct.Struct("<IIIIIIIIII")
+
 # Trailing restore cookie (not covered by e_shoff table).
 WPSE_MAGIC = b"WPSE"
 WPSE = struct.Struct("<4sQQHHI")  # magic, old_len, old_shoff, old_shnum, old_shstrndx, pad (=28)
@@ -32,31 +39,72 @@ def is_elf64_le(buf: bytes) -> bool:
     )
 
 
+def is_elf32_le(buf: bytes) -> bool:
+    return (
+        len(buf) >= 52
+        and buf[:4] == b"\x7fELF"
+        and buf[4] == ELFCLASS32
+        and buf[5] == ELFDATA2LSB
+    )
+
+
+def is_elf_le(buf: bytes) -> bool:
+    return is_elf64_le(buf) or is_elf32_le(buf)
+
+
+def _cls(buf: bytes) -> int:
+    if is_elf64_le(buf):
+        return ELFCLASS64
+    if is_elf32_le(buf):
+        return ELFCLASS32
+    raise SystemExit("not ELF32/ELF64 LE")
+
+
 def _parse_ehdr(buf: bytes) -> dict:
-    if not is_elf64_le(buf):
-        raise SystemExit("not ELF64 LE")
-    (
-        _e_ident,
-        _e_type,
-        _e_machine,
-        _e_version,
-        _e_entry,
-        _e_phoff,
-        e_shoff,
-        _e_flags,
-        _e_ehsize,
-        _e_phentsize,
-        _e_phnum,
-        e_shentsize,
-        e_shnum,
-        e_shstrndx,
-    ) = Ehdr.unpack_from(buf, 0)
-    if e_shnum == 0 or e_shstrndx >= e_shnum or e_shentsize < Shdr.size:
+    cls = _cls(buf)
+    if cls == ELFCLASS64:
+        (
+            _e_ident,
+            _e_type,
+            _e_machine,
+            _e_version,
+            _e_entry,
+            _e_phoff,
+            e_shoff,
+            _e_flags,
+            _e_ehsize,
+            _e_phentsize,
+            _e_phnum,
+            e_shentsize,
+            e_shnum,
+            e_shstrndx,
+        ) = Ehdr64.unpack_from(buf, 0)
+        shdr_size = Shdr64.size
+    else:
+        (
+            _e_ident,
+            _e_type,
+            _e_machine,
+            _e_version,
+            _e_entry,
+            _e_phoff,
+            e_shoff,
+            _e_flags,
+            _e_ehsize,
+            _e_phentsize,
+            _e_phnum,
+            e_shentsize,
+            e_shnum,
+            e_shstrndx,
+        ) = Ehdr32.unpack_from(buf, 0)
+        shdr_size = Shdr32.size
+    if e_shnum == 0 or e_shstrndx >= e_shnum or e_shentsize < shdr_size:
         raise SystemExit("bad ELF section headers")
     sh_end = e_shoff + e_shnum * e_shentsize
     if e_shoff >= len(buf) or sh_end > len(buf):
         raise SystemExit("ELF shdr out of range")
     return {
+        "cls": cls,
         "e_shoff": e_shoff,
         "e_shentsize": e_shentsize,
         "e_shnum": e_shnum,
@@ -66,18 +114,32 @@ def _parse_ehdr(buf: bytes) -> dict:
 
 def _shdr(buf: bytes, eh: dict, i: int) -> dict:
     off = eh["e_shoff"] + i * eh["e_shentsize"]
-    (
-        sh_name,
-        sh_type,
-        sh_flags,
-        sh_addr,
-        sh_offset,
-        sh_size,
-        sh_link,
-        sh_info,
-        sh_addralign,
-        sh_entsize,
-    ) = Shdr.unpack_from(buf, off)
+    if eh["cls"] == ELFCLASS64:
+        (
+            sh_name,
+            sh_type,
+            sh_flags,
+            sh_addr,
+            sh_offset,
+            sh_size,
+            sh_link,
+            sh_info,
+            sh_addralign,
+            sh_entsize,
+        ) = Shdr64.unpack_from(buf, off)
+    else:
+        (
+            sh_name,
+            sh_type,
+            sh_flags,
+            sh_addr,
+            sh_offset,
+            sh_size,
+            sh_link,
+            sh_info,
+            sh_addralign,
+            sh_entsize,
+        ) = Shdr32.unpack_from(buf, off)
     return {
         "sh_name": sh_name,
         "sh_type": sh_type,
@@ -132,12 +194,51 @@ def _read_cookie(buf: bytes) -> dict | None:
     }
 
 
+def _pack_shdr(cls: int, sh: dict) -> bytes:
+    if cls == ELFCLASS64:
+        return Shdr64.pack(
+            sh["sh_name"],
+            sh["sh_type"],
+            sh["sh_flags"],
+            sh["sh_addr"],
+            sh["sh_offset"],
+            sh["sh_size"],
+            sh["sh_link"],
+            sh["sh_info"],
+            sh["sh_addralign"],
+            sh["sh_entsize"],
+        )
+    return Shdr32.pack(
+        sh["sh_name"],
+        sh["sh_type"],
+        sh["sh_flags"],
+        sh["sh_addr"],
+        sh["sh_offset"],
+        sh["sh_size"],
+        sh["sh_link"],
+        sh["sh_info"],
+        sh["sh_addralign"],
+        sh["sh_entsize"],
+    )
+
+
+def _write_ehdr_sh_fields(out: bytearray, cls: int, shoff: int, shnum: int, shstrndx: int | None = None) -> None:
+    if cls == ELFCLASS64:
+        struct.pack_into("<Q", out, 40, shoff)
+        struct.pack_into("<H", out, 60, shnum)
+        if shstrndx is not None:
+            struct.pack_into("<H", out, 62, shstrndx)
+    else:
+        struct.pack_into("<I", out, 32, shoff)
+        struct.pack_into("<H", out, 48, shnum)
+        if shstrndx is not None:
+            struct.pack_into("<H", out, 50, shstrndx)
+
+
 def find_section(buf: bytes, name: str) -> bytes | None:
-    if not is_elf64_le(buf):
+    if not is_elf_le(buf):
         return None
-    # Ignore trailing cookie for shdr bounds
     view = buf
-    _read_cookie(buf)  # validate cookie; shdr uses full buf
     eh = _parse_ehdr(view)
     shstr = _shdr(view, eh, eh["e_shstrndx"])
     for i in range(eh["e_shnum"]):
@@ -157,6 +258,7 @@ def find_section(buf: bytes, name: str) -> bytes | None:
 def append_section(buf: bytes, name: str, payload: bytes) -> bytes:
     """Append SHT_PROGBITS named .name; write WPSE cookie for exact strip restore."""
     eh = _parse_ehdr(buf)
+    cls = eh["cls"]
     sec_name = name if name.startswith(".") else f".{name}"
     name_b = sec_name.encode("utf-8") + b"\x00"
     shstr = _shdr(buf, eh, eh["e_shstrndx"])
@@ -164,7 +266,6 @@ def append_section(buf: bytes, name: str, payload: bytes) -> bytes:
         raise SystemExit("ELF missing shstrtab")
 
     old_len = len(buf)
-    # Drop prior cookie if re-appending
     ck = _read_cookie(buf)
     if ck is not None:
         buf = buf[: len(buf) - WPSE.size]
@@ -177,14 +278,15 @@ def append_section(buf: bytes, name: str, payload: bytes) -> bytes:
     old_shstrndx = eh["e_shstrndx"]
 
     out = bytearray(buf)
-    cursor = (len(out) + 15) & ~15
+    align = 15 if cls == ELFCLASS64 else 3
+    cursor = (len(out) + align) & ~align
     if cursor > len(out):
         out.extend(b"\x00" * (cursor - len(out)))
     payload_off = cursor
     out.extend(payload)
     cursor = len(out)
 
-    cursor = (cursor + 7) & ~7
+    cursor = (cursor + align) & ~align
     if cursor > len(out):
         out.extend(b"\x00" * (cursor - len(out)))
     new_shstr_off = cursor
@@ -218,29 +320,14 @@ def append_section(buf: bytes, name: str, payload: bytes) -> bytes:
         }
     )
 
-    cursor = (len(out) + 7) & ~7
+    cursor = (len(out) + align) & ~align
     if cursor > len(out):
         out.extend(b"\x00" * (cursor - len(out)))
     shoff = cursor
     for sh in hdrs:
-        out.extend(
-            Shdr.pack(
-                sh["sh_name"],
-                sh["sh_type"],
-                sh["sh_flags"],
-                sh["sh_addr"],
-                sh["sh_offset"],
-                sh["sh_size"],
-                sh["sh_link"],
-                sh["sh_info"],
-                sh["sh_addralign"],
-                sh["sh_entsize"],
-            )
-        )
+        out.extend(_pack_shdr(cls, sh))
 
-    struct.pack_into("<Q", out, 40, shoff)
-    struct.pack_into("<H", out, 60, len(hdrs))
-    # Cookie restores exact pre-append image for sign digests.
+    _write_ehdr_sh_fields(out, cls, shoff, len(hdrs))
     out.extend(WPSE.pack(WPSE_MAGIC, old_len, old_shoff, old_shnum, old_shstrndx, 0))
     return bytes(out)
 
@@ -248,7 +335,6 @@ def append_section(buf: bytes, name: str, payload: bytes) -> bytes:
 def strip_section(buf: bytes, name: str) -> bytes:
     """Remove named section. Prefer WPSE cookie restore when section was last append."""
     if find_section(buf, name) is None:
-        # No section — drop trailing cookie if present so digest is clean artifact.
         ck = _read_cookie(buf)
         if ck is not None:
             return bytes(buf[: len(buf) - WPSE.size])
@@ -258,15 +344,14 @@ def strip_section(buf: bytes, name: str) -> bytes:
     if ck is not None:
         eh = _parse_ehdr(buf)
         shstr = _shdr(buf, eh, eh["e_shstrndx"])
-        # If the named section lives at/after old_len, cookie restore is exact.
         for i in range(eh["e_shnum"]):
             sh = _shdr(buf, eh, i)
             sn = _sh_name(buf, eh, shstr, sh["sh_name"])
             if _name_matches(sn, name) and sh["sh_offset"] >= ck["old_len"]:
                 out = bytearray(buf[: ck["old_len"]])
-                struct.pack_into("<Q", out, 40, ck["old_shoff"])
-                struct.pack_into("<H", out, 60, ck["old_shnum"])
-                struct.pack_into("<H", out, 62, ck["old_shstrndx"])
+                _write_ehdr_sh_fields(
+                    out, eh["cls"], ck["old_shoff"], ck["old_shnum"], ck["old_shstrndx"]
+                )
                 return bytes(out)
 
     raise SystemExit(

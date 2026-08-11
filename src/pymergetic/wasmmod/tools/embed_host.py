@@ -1,4 +1,4 @@
-# This file is part of wasmmod, https://github.com/pymergetic/wasmmod
+# This file is part of wasmmod, https://github.com/pymergetic-wasmmod/wasmmod
 #
 # The MIT License (MIT)
 #

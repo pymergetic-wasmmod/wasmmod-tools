@@ -1,5 +1,5 @@
 
-# This file is part of wasmmod, https://github.com/pymergetic/wasmmod
+# This file is part of wasmmod, https://github.com/pymergetic-wasmmod/wasmmod
 #
 # The MIT License (MIT)
 #
@@ -46,6 +46,7 @@ import sys
 import zlib
 from pathlib import Path
 
+from . import pmm
 from .paths import wasmmod_root
 
 SECTION_NAME = "wasmmod.pack"
@@ -680,6 +681,11 @@ def parse_manifest_deps(data: dict) -> list[tuple[str, str]]:
         for name, ver in raw.items():
             if not isinstance(name, str) or not name:
                 raise SystemExit("wasm_pack: deps keys must be non-empty strings")
+            if isinstance(ver, dict):
+                raise SystemExit(
+                    f"wasm_pack: deps[{name!r}] looks nested — quote dotted package "
+                    f'names in pack.toml, e.g. "{name}.…" = "0.1.0"'
+                )
             if not isinstance(ver, str) or not ver:
                 raise SystemExit(f"wasm_pack: deps[{name!r}] must be a non-empty version string")
             out.append((name, ver))
@@ -997,7 +1003,7 @@ def main() -> int:
     ap.add_argument(
         "inputs",
         nargs="+",
-        help="C sources, a pack directory, or pack.toml",
+        help="C sources, a pack directory, pack.toml, or a __pmm__.toml card/its dir",
     )
     ap.add_argument("-o", "--output", required=True, help="Output .wasm path")
     ap.add_argument("--export", action="append", default=[], help="Export symbol (repeatable)")
@@ -1107,10 +1113,11 @@ def main() -> int:
 
     for inp in args.inputs:
         path = Path(inp)
-        resolved = resolve_pack_root(path)
+        pmm_resolved = pmm.resolve_pmm_root(path)
+        resolved = pmm_resolved if pmm_resolved is not None else resolve_pack_root(path)
         if resolved is not None:
             root, manifest = resolved
-            data = load_toml(manifest)
+            data = pmm.synthesize_manifest_dict(root, manifest) if pmm_resolved is not None else load_toml(manifest)
             (
                 m_sources,
                 m_link,
@@ -1166,7 +1173,7 @@ def main() -> int:
         if path.is_file():
             sources.append(str(path.resolve()))
             continue
-        raise SystemExit(f"wasm_pack: not a source, pack dir, or pack.toml: {inp}")
+        raise SystemExit(f"wasm_pack: not a source, pack dir, pack.toml, or __pmm__.toml: {inp}")
 
     for t in args.tag:
         if "=" not in t:

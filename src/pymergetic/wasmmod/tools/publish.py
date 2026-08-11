@@ -1,5 +1,5 @@
 
-# This file is part of wasmmod, https://github.com/pymergetic/wasmmod
+# This file is part of wasmmod, https://github.com/pymergetic-wasmmod/wasmmod
 #
 # The MIT License (MIT)
 #
@@ -23,7 +23,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 """
-One-shot CDN release: pack → AOT → sign → zlib → metal-cdn upload.
+One-shot CDN release: pack → AOT → sign → zlib → wasmmod-cdn upload.
 
 By default builds **wasm + AOT** and attaches any matching ELF twins under
 ``-o`` / ``--elf``. Use ``--no-aot`` / ``--no-elf`` for a faster local loop;
@@ -46,11 +46,11 @@ uploads should keep the full set.
 
   # Upload already-built naked artifacts (skip pack/AOT):
   tools/wasmmod.py publish --from-artifacts packs/hello.wasm packs/hello.elf \\
-      --package hello --version 0.1.0 --token "$METAL_CDN_TOKEN" \\
+      --package hello --version 0.1.0 --token "$WASMMOD_CDN_TOKEN" \\
       --cdn-url https://cdn.example/cdn
 
 Requires: openssl (sign), wamrc (unless ``--no-aot``), and
-``pip install pymergetic-metal-cdn-client`` for upload (not needed for --dry-run).
+``pip install pymergetic-wasmmod-cdn-client`` for upload (not needed for --dry-run).
 """
 
 from __future__ import annotations
@@ -342,7 +342,7 @@ def _print_publish_summary(result: dict[str, Any], *, file=sys.stderr) -> None:
                 size = meta.get("size")
                 if size is not None:
                     try:
-                        from pymergetic.metal.cdn_client.format import human_size
+                        from pymergetic.wasmmod.cdn_client.format import human_size
 
                         bits.append(human_size(size))
                     except ImportError:
@@ -372,7 +372,7 @@ def _print_publish_summary(result: dict[str, Any], *, file=sys.stderr) -> None:
                 print(f"    {name}", file=file)
             else:
                 try:
-                    from pymergetic.metal.cdn_client.format import human_size
+                    from pymergetic.wasmmod.cdn_client.format import human_size
 
                     label = human_size(size)
                 except ImportError:
@@ -484,16 +484,16 @@ def _validate_publish_inputs(args: argparse.Namespace) -> None:
             cli.die(
                 PROG,
                 "--cdn-url was set but token is empty",
-                "Export METAL_CDN_TOKEN (or pass --token), e.g. after metal-cdn login",
-                "Or omit both flags to use saved metal-cdn login config",
+                "Export WASMMOD_CDN_TOKEN (or pass --token), e.g. after wasmmod-cdn login",
+                "Or omit both flags to use saved wasmmod-cdn login config",
                 "Or use --dry-run to build/sign/zlib without uploading",
             )
         if token and not url:
             cli.die(
                 PROG,
-                "--token was set but --cdn-url / METAL_CDN_URL is empty",
-                "Pass --cdn-url (e.g. http://127.0.0.1:8000/cdn) or set METAL_CDN_URL",
-                "Or omit both flags to use saved metal-cdn login config",
+                "--token was set but --cdn-url / WASMMOD_CDN_URL is empty",
+                "Pass --cdn-url (e.g. http://127.0.0.1:8000/cdn) or set WASMMOD_CDN_URL",
+                "Or omit both flags to use saved wasmmod-cdn login config",
             )
 
 
@@ -547,8 +547,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-sign", action="store_true", help="Skip signing (debug only)")
     ap.add_argument("--no-zlib", action="store_true", help="Upload naked signed artifacts")
     ap.add_argument("--also-naked", action="store_true", help="Upload zlib and naked copies")
-    ap.add_argument("--cdn-url", default=os.environ.get("METAL_CDN_URL"))
-    ap.add_argument("--token", default=os.environ.get("METAL_CDN_TOKEN"))
+    ap.add_argument("--cdn-url", default=os.environ.get("WASMMOD_CDN_URL"))
+    ap.add_argument("--token", default=os.environ.get("WASMMOD_CDN_TOKEN"))
     ap.add_argument("--claim", action="store_true", help="Claim package before publish")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-lead", action="store_true")
@@ -694,7 +694,7 @@ def main(argv: list[str] | None = None) -> int:
     print("upload candidates:", file=sys.stderr)
     for f in upload:
         try:
-            from pymergetic.metal.cdn_client.format import human_size
+            from pymergetic.wasmmod.cdn_client.format import human_size
 
             sz = human_size(f.stat().st_size)
         except ImportError:

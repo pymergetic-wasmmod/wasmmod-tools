@@ -1,5 +1,5 @@
 
-# This file is part of wasmmod, https://github.com/pymergetic/wasmmod
+# This file is part of wasmmod, https://github.com/pymergetic-wasmmod/wasmmod
 #
 # The MIT License (MIT)
 #
@@ -23,7 +23,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 """
-Remote metal-cdn index / lookup / download (pip-style host tooling).
+Remote wasmmod-cdn index / lookup / download (pip-style host tooling).
 
   tools/wasmmod.py cdn list
   tools/wasmmod.py cdn search hello
@@ -32,8 +32,8 @@ Remote metal-cdn index / lookup / download (pip-style host tooling).
   tools/wasmmod.py cdn closure hello
   tools/wasmmod.py cdn get hello -o ./packs [--unwrap]
 
-Uses ``pymergetic-metal-cdn-client`` + optional ``~/.config/metal-cdn/config.json``,
-or ``--cdn-url`` / ``--token`` / ``METAL_CDN_URL`` / ``METAL_CDN_TOKEN``.
+Uses ``pymergetic-wasmmod-cdn-client`` + optional ``~/.config/wasmmod-cdn/config.json``,
+or ``--cdn-url`` / ``--token`` / ``WASMMOD_CDN_URL`` / ``WASMMOD_CDN_TOKEN``.
 """
 
 from __future__ import annotations
@@ -71,8 +71,8 @@ def _client(args: argparse.Namespace) -> tuple[Any, type[BaseException]]:
     CdnClient = cdn.CdnClient
     ClientError = cdn.ClientError
 
-    url = args.cdn_url or os.environ.get("METAL_CDN_URL")
-    token = args.token or os.environ.get("METAL_CDN_TOKEN")
+    url = args.cdn_url or os.environ.get("WASMMOD_CDN_URL")
+    token = args.token or os.environ.get("WASMMOD_CDN_TOKEN")
     if url:
         client = CdnClient(url, token=token)
     else:
@@ -83,7 +83,7 @@ def _client(args: argparse.Namespace) -> tuple[Any, type[BaseException]]:
             cli.die_client(
                 exc,
                 prog=PROG,
-                extra_hints=["Set --cdn-url / METAL_CDN_URL or run: metal-cdn login --url …"],
+                extra_hints=["Set --cdn-url / WASMMOD_CDN_URL or run: wasmmod-cdn login --url …"],
             )
             raise SystemExit(1)
     cli.warn_experimental(client, prog=PROG)
@@ -547,8 +547,8 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("--cdn-url", default=os.environ.get("METAL_CDN_URL"))
-    ap.add_argument("--token", default=os.environ.get("METAL_CDN_TOKEN"))
+    ap.add_argument("--cdn-url", default=os.environ.get("WASMMOD_CDN_URL"))
+    ap.add_argument("--token", default=os.environ.get("WASMMOD_CDN_TOKEN"))
     ap.add_argument(
         "--channel",
         default="lead",

@@ -23,7 +23,7 @@ CLIENT_MIN_VERSION = "0.1.0a3"
 
 def _cdn_errors():
     try:
-        from pymergetic.metal.cdn_client import errors as err
+        from pymergetic.wasmmod.cdn_client import errors as err
     except ImportError:
         return None
     return err
@@ -77,21 +77,21 @@ def client_version_ok(installed: str, minimum: str = CLIENT_MIN_VERSION) -> bool
 
 
 def require_cdn_client(prog: str) -> Any:
-    """Import ``pymergetic.metal.cdn_client`` or die with install / upgrade hints."""
+    """Import ``pymergetic.wasmmod.cdn_client`` or die with install / upgrade hints."""
     try:
-        from pymergetic.metal import cdn_client
+        from pymergetic.wasmmod import cdn_client
     except ImportError:
         die(
             prog,
-            "install pymergetic-metal-cdn-client",
+            "install pymergetic-wasmmod-cdn-client",
             "pip install -r requirements-publish.txt",
         )
     ver = getattr(cdn_client, "__version__", "0.0.0+unknown")
     if not client_version_ok(ver):
         die(
             prog,
-            f"pymergetic-metal-cdn-client {ver} is too old (need >={CLIENT_MIN_VERSION})",
-            f"pip install -U 'pymergetic-metal-cdn-client>={CLIENT_MIN_VERSION}'",
+            f"pymergetic-wasmmod-cdn-client {ver} is too old (need >={CLIENT_MIN_VERSION})",
+            f"pip install -U 'pymergetic-wasmmod-cdn-client>={CLIENT_MIN_VERSION}'",
         )
     return cdn_client
 
@@ -107,7 +107,7 @@ def warn_experimental(client: Any, *, prog: str) -> None:
     msg = status.get("experimental_message") or (
         "Experimental CDN: data may be wiped before go-live — not for production."
     )
-    report(prog, msg, "Server flag METAL_CDN_EXPERIMENTAL (set false after go-live)")
+    report(prog, msg, "Server flag WASMMOD_CDN_EXPERIMENTAL (set false after go-live)")
 
 
 def local_hexdump(
@@ -115,7 +115,7 @@ def local_hexdump(
 ) -> str:
     """Prefer ``cdn_client.format.hexdump``; tiny offline fallback otherwise."""
     try:
-        from pymergetic.metal.cdn_client.format import hexdump
+        from pymergetic.wasmmod.cdn_client.format import hexdump
 
         return hexdump(data, width=width, limit=limit, color=color)
     except ImportError:

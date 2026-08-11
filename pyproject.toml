@@ -10,7 +10,7 @@ dependencies = []
 
 [project.optional-dependencies]
 cdn = [
-    "pymergetic-metal-cdn-client>=0.1.0a3",
+    "pymergetic-wasmmod-cdn-client>=0.1.0a3",
 ]
 inspect = [
     "pyelftools>=0.31",
@@ -19,14 +19,14 @@ inspect = [
 dev = [
     "pytest>=8.3.0",
     "ruff>=0.8.0",
-    "pymergetic-metal-cdn-client>=0.1.0a3",
+    "pymergetic-wasmmod-cdn-client>=0.1.0a3",
     "pyelftools>=0.31",
     "capstone>=5.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/pymergetic/wasmmod-tools"
-Documentation = "https://github.com/pymergetic/wasmmod-tools#readme"
+Homepage = "https://github.com/pymergetic-wasmmod/wasmmod-tools"
+Documentation = "https://github.com/pymergetic-wasmmod/wasmmod-tools#readme"
 
 [project.scripts]
 wasmmod = "pymergetic.wasmmod.tools.__main__:main"
@@ -64,7 +64,7 @@ ignore = ["BLE001", "E402", "EXE001", "EXE002", "PLC0414", "SIM103"]
 [tool.pyright]
 include = ["src", "tests"]
 exclude = ["**/.venv", "**/__pycache__", "build", "dist"]
-extraPaths = ["src", "../metalpython/extmod/wasmmod/python"]
+extraPaths = ["src"]
 stubPath = "typings"
 pythonVersion = "3.12"
 reportMissingImports = "error"
@@ -73,7 +73,7 @@ reportMissingModuleSource = "none"
 [tool.basedpyright]
 include = ["src", "tests"]
 exclude = ["**/.venv", "**/__pycache__", "build", "dist"]
-extraPaths = ["src", "../metalpython/extmod/wasmmod/python"]
+extraPaths = ["src"]
 stubPath = "typings"
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
