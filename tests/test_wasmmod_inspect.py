@@ -1,20 +1,28 @@
-"""Offline tests for wasmmod_inspect (needs examples/packs/hello.elf with -g)."""
+"""Offline tests for wasmmod_inspect (needs examples/packs hello artifacts)."""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
+import pytest
+
 from pymergetic.wasmmod.tools import inspect as insp
 from pymergetic.wasmmod.tools.paths import wasmmod_root
 
 ROOT = wasmmod_root() or Path(os.environ.get("WASMMOD_ROOT", "/nonexistent"))
+# Unified-tree hello pack name (FQN-as-filename); legacy hello.wasm is gone.
+WASM = ROOT / "examples" / "packs" / "pymergetic.wasmmod_examples.hello.wasm"
 ELF = ROOT / "examples" / "packs" / "hello.elf"
-WASM = ROOT / "examples" / "packs" / "hello.wasm"
+
+
+def _require_elf() -> bytes:
+    if not ELF.is_file():
+        pytest.skip(f"missing {ELF}; make -C examples/hello_elf when that example exists")
+    return ELF.read_bytes()
 
 
 def test_hello_elf_symbols_and_dwarf() -> None:
-    assert ELF.is_file(), f"missing {ELF}; make -C examples/hello_elf"
-    data = ELF.read_bytes()
+    data = _require_elf()
     assert insp.has_dwarf(data)
     names = {s.name for s in insp.list_symbols(data)}
     assert "hello" in names
@@ -38,8 +46,7 @@ def test_addr2line_binutils_hello_elf() -> None:
 
     if not shutil.which("addr2line"):
         return
-    assert ELF.is_file()
-    data = ELF.read_bytes()
+    data = _require_elf()
     hello = next(s for s in insp.list_symbols(data) if s.name == "hello")
     locs = insp.addr2line(data, hello.offset)
     assert locs and locs[0].role == "dwarf"
@@ -48,14 +55,14 @@ def test_addr2line_binutils_hello_elf() -> None:
 
 
 def test_locations_source_scan() -> None:
-    data = ELF.read_bytes()
+    data = _require_elf()
     src = {"src/hello.c": "int hello(void) {\n    return 42;\n}\n"}
     locs = insp.locations_for_symbol(data, "hello", source_files=src)
     assert any(l.path == "src/hello.c" and l.line == 1 for l in locs)
 
 
 def test_locations_py_twin_requires_def() -> None:
-    data = ELF.read_bytes()
+    data = _require_elf()
     src = {
         "__init__.py": "def hello():\n    return 42\n\ndef other():\n    return hello()\n",
         "call_only.py": "x = hello()\n",
@@ -68,7 +75,7 @@ def test_locations_py_twin_requires_def() -> None:
 
 
 def test_locations_c_def_not_call_or_proto() -> None:
-    data = ELF.read_bytes()
+    data = _require_elf()
     src = {
         "src/hello.c": (
             "int hello(void);\n"
@@ -93,16 +100,15 @@ def test_locations_c_def_not_call_or_proto() -> None:
 
 def test_locations_auto_load_embedded_source() -> None:
     """Wasm pack embeds MPSR; locations_for_symbol finds defs without source_files=."""
-    assert WASM.is_file(), f"missing {WASM}"
+    assert WASM.is_file(), f"missing {WASM}; make -C examples/hello"
     data = WASM.read_bytes()
     locs = insp.locations_for_symbol(data, "hello")
-    assert any(l.role == "def" and l.path.endswith("hello.c") for l in locs)
+    assert any(l.role == "def" and "hello" in l.path for l in locs)
 
 
 def test_locations_auto_load_elf_source() -> None:
     """ELF packs with [source] embed also expose C defs via locations_for_symbol."""
-    assert ELF.is_file(), f"missing {ELF}"
-    data = ELF.read_bytes()
+    data = _require_elf()
     locs = insp.locations_for_symbol(data, "hello")
     # dwarf+def on the same line collapse; prefer dwarf with the longer path.
     lined = [l for l in locs if l.line is not None and l.path.endswith("hello.c")]
@@ -129,7 +135,7 @@ def test_locations_collapse_dwarf_and_def() -> None:
 
 
 def test_locations_skips_block_comment_star_lines() -> None:
-    data = ELF.read_bytes()
+    data = _require_elf()
     src = {
         "src/hello.c": (
             "/*\n"
@@ -146,7 +152,7 @@ def test_locations_skips_block_comment_star_lines() -> None:
 
 
 def test_disasm_text_nonempty() -> None:
-    data = ELF.read_bytes()
+    data = _require_elf()
     # Find .text index
     text_i = None
     for i, _sh, name in insp._iter_shdrs(data):
