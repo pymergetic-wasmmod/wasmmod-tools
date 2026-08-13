@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 
 COMMANDS: dict[str, str] = {
+    "gen": "gen",
     "pack": "pack",
     "pack-elf": "pack_elf",
     "pack-tree": "pack_tree",

@@ -113,15 +113,15 @@ def load_card(path: Path) -> Card:
         raise SystemExit(f"wasm_pack: {path}: 'deps' must be a table ({{fqn = version}})")
     version = data.get("version")
 
-    # Root-only rule (docs/SOURCETREE.md decision log, corrected 2026-08-11):
-    # a non-root module has no independent existence to depend on or pin a
-    # version of — it always ships baked into whichever root's artifact
-    # contains it, at that root's own commit/checkout.
-    if not build and (deps or version is not None):
+    # `deps` only on build-marked roots. `version` also allowed on host/kernel
+    # publish units (no `build`) — see SOURCETREE.md version row.
+    if not build and deps:
         raise SystemExit(
-            f"wasm_pack: {path}: 'deps'/'version' are only meaningful on a "
+            f"wasm_pack: {path}: 'deps' is only meaningful on a "
             f"build-marked root (this card has no 'build' key)"
         )
+    if version is not None and not isinstance(version, str):
+        raise SystemExit(f"wasm_pack: {path}: 'version' must be a string")
 
     # `build` (array) is the deliverable-root marker; its knobs live under a
     # *distinctly named* `[build_cfg]` table — `build = [...]` then `[build]`
@@ -261,6 +261,18 @@ def subtree_c_impl_files(root_card_path: Path) -> list[Path]:
     return out
 
 
+def subtree_c_test_files(root_card_path: Path) -> list[Path]:
+    """Every ``__tests__.c`` inside a build root's own boundary."""
+    root_card = load_card(root_card_path)
+    nested_root_dirs = [c.dir for c in walk_subtree(root_card_path) if c.is_root and c.dir != root_card.dir]
+    out: list[Path] = []
+    for p in sorted(root_card.dir.rglob("__tests__.c")):
+        if _under_nested_root(p, root_card.dir, nested_root_dirs):
+            continue
+        out.append(p)
+    return out
+
+
 def synthesize_manifest_dict(pack_root: Path, card_path: Path) -> dict:
     """Build a ``pack.toml``-shaped dict from a ``*.pmm.toml`` card tree,
     so the existing, unchanged ``manifest_to_build()`` in ``pack.py`` can
@@ -273,21 +285,30 @@ def synthesize_manifest_dict(pack_root: Path, card_path: Path) -> dict:
         raise SystemExit(f"wasm_pack: {card_path}: not a build-marked root (no 'build' key)")
 
     c_files = subtree_c_impl_files(card_path)
-    if not c_files:
-        raise SystemExit(f"wasm_pack: {card_path}: no __impl__.c found in this root's subtree")
+    test_files = subtree_c_test_files(card_path)
+    exports = faces.scan_c_exports(c_files) if c_files else []
+    tests = faces.scan_c_tests(test_files) if test_files else []
 
-    exports = faces.scan_c_exports(c_files)
+    if not c_files and not exports:
+        raise SystemExit(
+            f"wasm_pack: {card_path}: no __impl__.c / discoverable exports in this root's subtree"
+        )
 
     build_cfg = root_card.build_cfg
 
+    native_sources = [str(p) for p in c_files] + [str(p) for p in test_files]
     data: dict = {
         "name": root_card.fqn,
-        "native": {"sources": [str(p) for p in c_files]},
+        "native": {"sources": native_sources},
         "exports": [
             {"module": mod, "func": impl_fn, "export": export_name, "sig": sig}
             for (mod, export_name, impl_fn, sig) in exports
         ],
-        "imports": [],  # face-derived import discovery: not built this pass (hello has none)
+        "tests": [
+            {"module": mod, "name": case_name, "func": impl_fn}
+            for (mod, case_name, impl_fn) in tests
+        ],
+        "imports": [],  # connect-derived pack imports: filled when guests declare PM_MOD_CONNECT
         "lifecycle": {
             "load": root_card.on_load or "",
             "unload": root_card.on_unload or "",

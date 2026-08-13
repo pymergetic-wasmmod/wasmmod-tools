@@ -23,15 +23,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 """
-face-export-discovery, v1: **C only**.
+Packer-facing export discovery (compat shim).
 
-Regex-scans ``__impl__.c`` files for ``PM_MOD_EXPORT_C(module, export_name,
-impl_fn, c_type_signature)`` call sites (see ``src/pymergetic/wasmmod/guest.h`` for the
-macro itself — currently a declarative no-op, real slot-backed registration
-is the separate, later ``pm-mod-export-macro`` work).
-
-``PM_MOD_EXPORT_RS`` / Rust discovery is explicitly out of scope this pass
-(no Rust example is being converted yet).
+Face codegen SoT is ``pymergetic.util.gen`` (live registry introspection).
+This module keeps ``scan_c_exports`` / ``parse_c_signature`` for the packer
+until pack manifests also move to introspection.
 """
 
 from __future__ import annotations
@@ -44,6 +40,13 @@ _CALL_PREFIX_RE = re.compile(
     r"([A-Za-z_][\w.]*)\s*,\s*"  # module
     r"([A-Za-z_]\w*)\s*,\s*"  # export_name
     r"([A-Za-z_]\w*)\s*,",  # impl_fn
+)
+
+_TEST_RE = re.compile(
+    r"PM_MOD_TEST_C\s*\(\s*"
+    r"([A-Za-z_][\w.]*)\s*,\s*"  # module
+    r"([A-Za-z_]\w*)\s*,\s*"  # case_name (registry)
+    r"([A-Za-z_]\w*)\s*\)",  # impl_fn (wasm export symbol)
 )
 
 # C type → is it representable as a Wasm i32 in the compact legacy sig tag?
@@ -164,4 +167,18 @@ def scan_c_exports(c_files: list[Path]) -> list[tuple[str, str, str, str | None]
             sig_text = text[sig_start : i - 1].strip()
             sig = parse_c_signature(sig_text)
             out.append((module, export_name, impl_fn, sig))
+    return out
+
+
+def scan_c_tests(c_files: list[Path]) -> list[tuple[str, str, str]]:
+    """Scan ``__tests__.c`` (and friends) for ``PM_MOD_TEST_C`` call sites.
+
+    Returns ``[(module, case_name, impl_fn), …]``. ``impl_fn`` is the C/wasm
+    export symbol; ``case_name`` is the registry test name.
+    """
+    out: list[tuple[str, str, str]] = []
+    for path in c_files:
+        text = path.read_text()
+        for m in _TEST_RE.finditer(text):
+            out.append((m.group(1), m.group(2), m.group(3)))
     return out

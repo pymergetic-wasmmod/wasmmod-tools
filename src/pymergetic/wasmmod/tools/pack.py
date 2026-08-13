@@ -52,14 +52,20 @@ from .paths import wasmmod_root
 SECTION_NAME = "wasmmod.pack"
 IMPORTS_SECTION = "wasmmod.imports"
 DEPS_SECTION = "wasmmod.deps"
+PKG_SECTION = "wasmmod.pkg"
+TESTS_SECTION = "wasmmod.tests"
 MAGIC = b"MPWP"
 IMPORTS_MAGIC = b"MPWI"
 DEPS_MAGIC = b"MPWD"
+PKG_MAGIC = b"MPPK"
+TESTS_MAGIC = b"MPTE"
 PACK_VERSION_V1 = 1
 PACK_VERSION_V2 = 2
 PACK_VERSION_V3 = 3
 IMPORTS_VERSION = 1
 DEPS_VERSION = 1
+PKG_VERSION_FMT = 1
+TESTS_VERSION = 1
 
 KIND_PY = 1
 KIND_MPY = 2
@@ -116,6 +122,11 @@ def is_native_source(path: Path) -> bool:
     return path.suffix in NATIVE_EXTS
 
 
+def is_tests_path(path: Path) -> bool:
+    """``__tests__.*`` or anything under a ``__tests__/`` split dir."""
+    return path.name.startswith("__tests__.") or "__tests__" in path.parts
+
+
 def should_embed_file(path: Path) -> bool:
     """True if path belongs in wasmmod.pack (not native/build noise)."""
     name = path.name
@@ -125,6 +136,9 @@ def should_embed_file(path: Path) -> bool:
         return False
     if path.suffix in EMBED_SKIP_SUFFIXES:
         return False
+    # Test sources ride along in wasmmod.source even when native (.c/.rs).
+    if is_tests_path(path):
+        return True
     if is_native_source(path):
         return False
     return True
@@ -646,6 +660,64 @@ def build_deps_payload(deps: list[tuple[str, str]]) -> bytes:
     return bytes(out)
 
 
+def build_pkg_payload(version: str) -> bytes:
+    """Always-on package version section (MPPK) — independent of embed_source."""
+    ver_b = version.encode("utf-8")
+    if len(ver_b) > 0xFFFF:
+        raise SystemExit("wasm_pack: package version too long")
+    out = bytearray()
+    out += PKG_MAGIC
+    out += struct.pack("<HH", PKG_VERSION_FMT, len(ver_b))
+    out += ver_b
+    return bytes(out)
+
+
+def build_tests_payload(tests: list[tuple[str, str, str]]) -> bytes:
+    """``wasmmod.tests`` (MPTE): ``[(module, case_name, export_symbol), …]``.
+
+    Loader registers each under the load fqn; ``export_symbol`` is the wasm
+    export looked up at load time (never a product face).
+    """
+    out = bytearray()
+    out += TESTS_MAGIC
+    out += struct.pack("<H", TESTS_VERSION)
+    out += struct.pack("<I", len(tests))
+    for module, name, export in tests:
+        for label, s in (("module", module), ("name", name), ("export", export)):
+            b = s.encode("utf-8")
+            if len(b) > 0xFFFF:
+                raise SystemExit(f"wasm_pack: tests {label} too long: {s}")
+            out += struct.pack("<H", len(b))
+            out += b
+    return bytes(out)
+
+
+def parse_manifest_tests(data: dict) -> list[tuple[str, str, str]]:
+    """Read ``[[tests]]`` / ``tests`` list from pack.toml → ``[(module, name, func), …]``."""
+    raw = data.get("tests")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise SystemExit("wasm_pack: tests must be a list of tables")
+    out: list[tuple[str, str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("name")
+        func = item.get("func") or name
+        module = item.get("module", "")
+        if module is None:
+            module = ""
+        if not isinstance(name, str) or not name:
+            raise SystemExit("wasm_pack: tests.name must be a non-empty string")
+        if not isinstance(func, str) or not func:
+            raise SystemExit("wasm_pack: tests.func must be a non-empty string")
+        if not isinstance(module, str):
+            raise SystemExit("wasm_pack: tests.module must be a string")
+        out.append((module, name, func))
+    return out
+
+
 def parse_deps_payload(payload: bytes) -> list[tuple[str, str]]:
     """Parse MPWD ``wasmmod.deps`` payload → ``[(name, version), …]``."""
     if len(payload) < 10 or payload[:4] != DEPS_MAGIC:
@@ -710,7 +782,8 @@ def _guest_header(root: Path) -> Path:
 
 
 def guest_include_dir() -> Path | None:
-    """Crate root for the ``-I`` rule (``#include "src/pymergetic/…"``).
+    """Crate root; pair with ``guest_include_flags`` (``-Isrc`` →
+    ``#include "pymergetic/…"``, never ``src/`` in the include spelling).
 
     No parallel ``include/`` — guest macros live under ``src/`` like
     every other module face (see docs/SOURCETREE.md).
@@ -742,9 +815,9 @@ def guest_include_dir() -> Path | None:
 
 
 def guest_include_flags() -> list[str]:
-    """``-I`` crate root so guests can ``#include "src/pymergetic/wasmmod/guest.h"``."""
-    inc = guest_include_dir()
-    return [f"-I{inc}"] if inc is not None else []
+    """``-Isrc`` so guests ``#include "pymergetic/wasmmod/guest.h"`` (no ``src/`` in path)."""
+    root = guest_include_dir()
+    return [f"-I{root / 'src'}"] if root is not None else []
 
 
 def compile_to_obj(src: Path, obj: Path, opt: str) -> None:
@@ -1102,6 +1175,7 @@ def main() -> int:
     pack_exports: list[tuple[str, str, str, int]] = []
     pack_imports: list[tuple[str, str]] = []
     pack_deps: list[tuple[str, str]] = []
+    pack_tests: list[tuple[str, str, str]] = []
     mounts: list[Path] = list(args.mount)
     pkg_name: str | None = args.name
     # Default: source-only. Opt in via freeze/targets / --freeze / --python-target.
@@ -1143,6 +1217,12 @@ def main() -> int:
             for name_ver in parse_manifest_deps(data):
                 if name_ver not in pack_deps:
                     pack_deps.append(name_ver)
+            for t in parse_manifest_tests(data):
+                if t not in pack_tests:
+                    pack_tests.append(t)
+                _mod, _case, func = t
+                if func not in link_exports:
+                    link_exports.append(func)
             for m in m_mounts:
                 if m not in mounts:
                     mounts.append(m)
@@ -1275,6 +1355,23 @@ def main() -> int:
             file=sys.stderr,
         )
 
+    # Always-on package version (independent of embed_source).
+    ver = (pkg_version or "0.0.0").strip() or "0.0.0"
+    ppayload = build_pkg_payload(ver)
+    raw = append_custom_section(raw, PKG_SECTION, ppayload)
+    print(
+        f"packed section {PKG_SECTION!r}: version={ver!r} payload={len(ppayload)}B",
+        file=sys.stderr,
+    )
+
+    if pack_tests:
+        tpayload = build_tests_payload(pack_tests)
+        raw = append_custom_section(raw, TESTS_SECTION, tpayload)
+        print(
+            f"packed section {TESTS_SECTION!r}: tests={len(pack_tests)} payload={len(tpayload)}B",
+            file=sys.stderr,
+        )
+
     want_source = args.with_source
     if want_source is None:
         want_source = bool(manifest_embed_source)
@@ -1306,7 +1403,7 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    if want_section or pack_imports or pack_deps or want_source:
+    if want_section or pack_imports or pack_deps or pack_tests or want_source:
         out.write_bytes(raw)
     else:
         raw = out.read_bytes()
@@ -1339,7 +1436,7 @@ def main() -> int:
         # Carry pack metadata into the .aot (same payloads as on the .wasm).
         # Do NOT emit wasmmod.sig here: the signature covers the final artifact
         # bytes (sign after AOT with `sign sign --key … --chain …`).
-        emit = "wasmmod.pack,wasmmod.imports,wasmmod.deps,wasmmod.source"
+        emit = "wasmmod.pack,wasmmod.imports,wasmmod.deps,wasmmod.pkg,wasmmod.tests,wasmmod.source"
         cmd = [
             wamrc,
             f"--emit-custom-sections={emit}",
